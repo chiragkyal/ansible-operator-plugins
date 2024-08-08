@@ -98,7 +98,7 @@ DOCKER_PROGRESS = --progress plain
 endif
 image/%: export DOCKER_CLI_EXPERIMENTAL = enabled
 image/%:
-	docker buildx build $(DOCKER_PROGRESS) -t $(BUILD_IMAGE_REPO)/$*:$(IMAGE_TAG) -f ./images/$*/Dockerfile --load . --no-cache
+	docker buildx build $(DOCKER_PROGRESS) -t $(BUILD_IMAGE_REPO)/$*:$(IMAGE_TAG) -f ./images/$*/Dockerfile.ocp --load . --no-cache
 ##@ Release
 
 ## TODO: Add release targets here
@@ -139,7 +139,7 @@ e2e_targets := test-e2e $(e2e_tests)
 .PHONY: test-e2e-setup
 export KIND_CLUSTER := osdk-test
 
-test-e2e-setup:: build dev-install cluster-create
+test-e2e-setup:: dev-install cluster-create
 
 .PHONY: cluster-create
 cluster-create:: $(KIND)
