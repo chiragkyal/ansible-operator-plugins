@@ -17,15 +17,15 @@ limitations under the License.
 package utils
 
 import (
+	"fmt"
 	"os"
 
 	"sigs.k8s.io/kubebuilder/v4/pkg/plugin/util"
 )
 
 // ImplementWebhooks will mock an webhook data
-func ImplementWebhooks(filename string) error {
-	// false positive
-	// nolint:gosec
+func ImplementWebhooks(filename, lowerKind string) error {
+	//nolint:gosec // false positive
 	bs, err := os.ReadFile(filename)
 	if err != nil {
 		return err
@@ -42,12 +42,14 @@ func ImplementWebhooks(filename string) error {
 	}
 
 	// implement defaulting webhook logic
+	replace := fmt.Sprintf(`if %s.Spec.Count == 0 {
+		%s.Spec.Count = 5
+	}`, lowerKind, lowerKind)
 	str, err = util.EnsureExistAndReplace(
 		str,
 		"// TODO(user): fill in your defaulting logic.",
-		`if r.Spec.Count == 0 {
-		r.Spec.Count = 5
-	}`)
+		replace,
+	)
 	if err != nil {
 		return err
 	}
@@ -56,22 +58,21 @@ func ImplementWebhooks(filename string) error {
 	str, err = util.EnsureExistAndReplace(
 		str,
 		"// TODO(user): fill in your validation logic upon object creation.",
-		`if r.Spec.Count < 0 {
+		fmt.Sprintf(`if %s.Spec.Count < 0 {
 		return nil, errors.New(".spec.count must >= 0")
-	}`)
+	}`, lowerKind))
 	if err != nil {
 		return err
 	}
 	str, err = util.EnsureExistAndReplace(
 		str,
 		"// TODO(user): fill in your validation logic upon object update.",
-		`if r.Spec.Count < 0 {
+		fmt.Sprintf(`if %s.Spec.Count < 0 {
 		return nil, errors.New(".spec.count must >= 0")
-	}`)
+	}`, lowerKind))
 	if err != nil {
 		return err
 	}
-	// false positive
-	// nolint:gosec
-	return os.WriteFile(filename, []byte(str), 0644)
+	//nolint:gosec // false positive
+	return os.WriteFile(filename, []byte(str), 0o644)
 }
