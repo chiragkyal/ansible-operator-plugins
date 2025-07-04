@@ -6,13 +6,13 @@
 #
 #cffi==1.17.1
     # via -r ./requirements-build1.in
-cython==3.0.12
+cython==3.1.2
     # via -r ./requirements-build1.in
 flit-core==3.12.0
     # via -r ./requirements-build1.in
-#maturin==1.8.3
+#maturin==1.9.0
     # via -r ./requirements-build1.in
-packaging==24.2
+packaging==25.0
     # via
     #   -r ./requirements-build1.in
     #   setuptools-scm
@@ -26,13 +26,13 @@ semantic-version==2.10.0
     #   setuptools-rust
 setuptools-rust==1.11.1
     # via -r ./requirements-build1.in
-setuptools-scm==8.2.0
+setuptools-scm==8.3.1
     # via -r ./requirements-build1.in
 wheel==0.45.1
     # via -r ./requirements-build1.in
 
 # The following packages are considered to be unsafe in a requirements file:
-setuptools==75.8.0
+setuptools==76.0.0
     # via
     #   -r ./requirements-build1.in
     #   setuptools-rust

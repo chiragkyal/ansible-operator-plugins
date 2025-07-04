@@ -1,15 +1,15 @@
-FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.23-openshift-4.19 AS builder
+FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.24-openshift-4.20 AS builder
 
 ENV GO111MODULE=on \
     GOFLAGS=-mod=vendor
 
 COPY . /go/src/github.com/openshift/ansible-operator-plugins
 RUN cd /go/src/github.com/openshift/ansible-operator-plugins \
- && export SIMPLE_VERSION="$(make -pRrq --no-print-directory | grep '^IMAGE_VERSION' | awk -F'= ' '{print $2}')-ocp" \
- && export GIT_VERSION="$(make -pRrq --no-print-directory | grep '^IMAGE_VERSION' | awk -F'= ' '{print $2}')-ocp" \
- && make -e build
+    && export SIMPLE_VERSION="$(make -pRrq --no-print-directory | grep '^IMAGE_VERSION' | awk -F'= ' '{print $2}')-ocp" \
+    && export GIT_VERSION="$(make -pRrq --no-print-directory | grep '^IMAGE_VERSION' | awk -F'= ' '{print $2}')-ocp" \
+    && make -e build
 
-FROM registry.ci.openshift.org/ocp/4.19:base-rhel9
+FROM registry.ci.openshift.org/ocp/4.20:base-rhel9
 
 RUN mkdir -p /etc/ansible \
     && echo "localhost ansible_connection=local" > /etc/ansible/hosts \
@@ -47,9 +47,9 @@ COPY openshift/release/ansible/ansible_collections ${HOME}/.ansible/collections/
 
 # Ensure directory permissions are properly set
 RUN echo "${USER_NAME}:x:${USER_UID}:0:${USER_NAME} user:${HOME}:/sbin/nologin" >> /etc/passwd \
-  && mkdir -p ${HOME}/.ansible/tmp \
-  && chown -R ${USER_UID}:0 ${HOME} \
-  && chmod -R ug+rwx ${HOME}
+    && mkdir -p ${HOME}/.ansible/tmp \
+    && chown -R ${USER_UID}:0 ${HOME} \
+    && chmod -R ug+rwx ${HOME}
 
 WORKDIR ${HOME}
 USER ${USER_UID}
