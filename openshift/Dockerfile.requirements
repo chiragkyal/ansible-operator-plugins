@@ -27,7 +27,7 @@ RUN python3 -m pip install pipenv==2023.11.15 \
   && pipenv check --ignore 71064 \
   && pipenv run pip freeze --all  > ./requirements.in \
   && pip-compile --output-file=./requirements.txt ./requirements.in --strip-extras \
-  # NOTE: Comment out ansible-core, ansible-runner, ansible-runner-http, and
+  # NOTE: Comment out ansible-core, ansible-runner, and
   # requests-unixsocket from `requirements.txt` to avoid running
   # `pip_find_builddeps.py` script against these.
   # These are required to properly resolve dependency conflicts:
@@ -40,7 +40,6 @@ RUN python3 -m pip install pipenv==2023.11.15 \
   #     - `setuptools_scm<8` is required by kubernetes.
   && sed -i '/ansible-core==/s/^/#/g' ./requirements.txt \
   && sed -i '/ansible-runner==/s/^/#/g' ./requirements.txt \
-  && sed -i '/ansible-runner-http==/s/^/#/g' ./requirements.txt \
   && sed -i '/requests-unixsocket==/s/^/#/g' ./requirements.txt \
   # NOTE: Comment out cryptography and its dependencies from the requirements.txt
   # files as these packages can't be installed in the isolated environment of OSBS
@@ -50,11 +49,10 @@ RUN python3 -m pip install pipenv==2023.11.15 \
   && sed -i '/pycparser==/s/^/#/g' ./requirements.txt \
   && sed -i '/maturin==/s/^/#/g' ./requirements.txt \
   && ./pip_find_builddeps.py requirements.txt -o requirements-build.in --append \
-  # Uncomment ansible-core, ansible-runner, ansible-runner-http and requests-unixsocket,
+  # Uncomment ansible-core, ansible-runner and requests-unixsocket,
   # so that they are re-enabled in the requirements.txt file.
   && sed -i '/ansible-core==/s/^#//g' ./requirements.txt \
   && sed -i '/ansible-runner==/s/^#//g' ./requirements.txt \
-  && sed -i '/ansible-runner-http==/s/^#//g' ./requirements.txt \
   && sed -i '/requests-unixsocket==/s/^#//g' ./requirements.txt \
   && pip-compile --output-file=./requirements-build.txt ./requirements-build.in --strip-extras --allow-unsafe \
   # NOTE: Comment out cryptography and its dependencies from the requirements-build.txt

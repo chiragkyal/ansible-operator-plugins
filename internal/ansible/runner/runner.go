@@ -17,7 +17,6 @@ package runner
 import (
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -196,24 +195,23 @@ func (r *runner) Run(ident string, u *unstructured.Unstructured, kubeconfig stri
 		"namespace", u.GetNamespace(),
 	)
 
+	// calculate the input directory path first
+	inputDirPath := filepath.Join("/tmp/ansible-operator/runner/", r.GVK.Group, r.GVK.Version, r.GVK.Kind,
+		u.GetNamespace(), u.GetName())
+
 	// start the event receiver. We'll check errChan for an error after
 	// ansible-runner exits.
 	errChan := make(chan error, 1)
-	receiver, err := eventapi.New(ident, errChan)
+	receiver, err := eventapi.New(ident, inputDirPath, errChan)
 	if err != nil {
 		return nil, err
 	}
 	inputDir := inputdir.InputDir{
-		Path: filepath.Join("/tmp/ansible-operator/runner/", r.GVK.Group, r.GVK.Version, r.GVK.Kind,
-			u.GetNamespace(), u.GetName()),
+		Path:       inputDirPath,
 		Parameters: r.makeParameters(u),
 		EnvVars: map[string]string{
 			"K8S_AUTH_KUBECONFIG": kubeconfig,
 			"KUBECONFIG":          kubeconfig,
-		},
-		Settings: map[string]string{
-			"runner_http_url":  receiver.SocketPath,
-			"runner_http_path": receiver.URLPath,
 		},
 		CmdLine: r.ansibleArgs,
 	}
@@ -273,8 +271,7 @@ func (r *runner) Run(ident string, u *unstructured.Unstructured, kubeconfig stri
 
 		receiver.Close()
 		err = <-errChan
-		// http.Server returns this in the case of being closed cleanly
-		if err != nil && err != http.ErrServerClosed {
+		if err != nil {
 			logger.Error(err, "Error from event API")
 		}
 

@@ -7,10 +7,6 @@
 ansible-core==2.18.5
     # via -r ./requirements.in
 ansible-runner==2.4.1
-    # via
-    #   -r ./requirements.in
-    #   ansible-runner-http
-ansible-runner-http==1.0.0
     # via -r ./requirements.in
 cachetools==5.5.2
     # via
@@ -107,7 +103,6 @@ pyyaml==6.0.2
 requests==2.31.0
     # via
     #   -r ./requirements.in
-    #   ansible-runner-http
     #   kubernetes
     #   requests-oauthlib
     #   requests-unixsocket
@@ -116,9 +111,7 @@ requests-oauthlib==2.0.0
     #   -r ./requirements.in
     #   kubernetes
 requests-unixsocket==0.4.1
-    # via
-    #   -r ./requirements.in
-    #   ansible-runner-http
+    # via -r ./requirements.in
 resolvelib==1.0.1
     # via
     #   -r ./requirements.in

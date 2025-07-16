@@ -15,13 +15,13 @@
 package eventapi
 
 import (
+	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"net"
-	"net/http"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -30,26 +30,17 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-// EventReceiver serves the event API
+// EventReceiver monitors ansible-runner event files and forwards events
 type EventReceiver struct {
 	// Events is the channel used by the event API handler to send JobEvents
 	// back to the runner, or whatever code is using this receiver.
 	Events chan JobEvent
 
-	// SocketPath is the path on the filesystem to a unix streaming socket
-	SocketPath string
-
-	// URLPath is the path portion of the url at which events should be
-	// received. For example, "/events/"
-	URLPath string
-
-	// server is the http.Server instance that serves the event API. It must be
-	// closed.
-	server io.Closer
+	// ArtifactsPath is the path to the ansible-runner artifacts directory
+	ArtifactsPath string
 
 	// stopped indicates if this receiver has permanently stopped receiving
-	// events. When true, requests to POST an event will receive a "410 Gone"
-	// response, and the body will be ignored.
+	// events. When true, no more events will be processed.
 	stopped bool
 
 	// mutex controls access to the "stopped" bool above, ensuring that writes
@@ -61,117 +52,162 @@ type EventReceiver struct {
 
 	// logger holds a logger that has some fields already set
 	logger logr.Logger
+
+	// cancel function to stop the file monitoring goroutine
+	cancel context.CancelFunc
+
+	// lastEventNum tracks the last event number processed to avoid duplicates
+	lastEventNum int
 }
 
-func New(ident string, errChan chan<- error) (*EventReceiver, error) {
-	sockPath := fmt.Sprintf("/tmp/ansibleoperator-%s", ident)
-	listener, err := net.Listen("unix", sockPath)
-	if err != nil {
-		return nil, err
-	}
+func New(ident string, basePath string, errChan chan<- error) (*EventReceiver, error) {
+	// Create the artifacts directory path for this run
+	artifactsPath := filepath.Join(basePath, "artifacts")
 
 	rec := EventReceiver{
-		Events:     make(chan JobEvent, 1000),
-		SocketPath: sockPath,
-		URLPath:    "/events/",
-		ident:      ident,
-		logger:     logf.Log.WithName("eventapi").WithValues("job", ident),
+		Events:        make(chan JobEvent, 1000),
+		ArtifactsPath: artifactsPath,
+		ident:         ident,
+		logger:        logf.Log.WithName("eventapi").WithValues("job", ident),
+		lastEventNum:  -1,
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc(rec.URLPath, rec.handleEvents)
-	srv := http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
-	rec.server = &srv
+	// Start monitoring for event files
+	ctx, cancel := context.WithCancel(context.Background())
+	rec.cancel = cancel
 
 	go func() {
-		errChan <- srv.Serve(listener)
+		if err := rec.monitorEventFiles(ctx); err != nil {
+			rec.logger.Error(err, "Error monitoring event files")
+			errChan <- err
+		}
 	}()
+
 	return &rec, nil
 }
 
-// Close ensures that appropriate resources are cleaned up, such as any unix
-// streaming socket that may be in use. Close must be called.
+// Close ensures that appropriate resources are cleaned up
 func (e *EventReceiver) Close() {
 	e.mutex.Lock()
 	e.stopped = true
 	e.mutex.Unlock()
 	e.logger.V(1).Info("Event API stopped")
-	if err := e.server.Close(); err != nil && !errors.Is(err, os.ErrClosed) {
-		e.logger.Error(err, "Failed to close event receiver")
+
+	if e.cancel != nil {
+		e.cancel()
 	}
-	os.Remove(e.SocketPath)
 	close(e.Events)
 }
 
-func (e *EventReceiver) handleEvents(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != e.URLPath {
-		http.NotFound(w, r)
-		e.logger.Info("Path not found", "code", "404", "Request.Path", r.URL.Path)
-		return
-	}
+// monitorEventFiles monitors the artifacts directory for new event files
+func (e *EventReceiver) monitorEventFiles(ctx context.Context) error {
+	ticker := time.NewTicker(100 * time.Millisecond) // Check for new events every 100ms
+	defer ticker.Stop()
 
-	if r.Method != http.MethodPost {
-		e.logger.Info("Method not allowed", "code", "405", "Request.Method", r.Method)
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-
-	ct := r.Header.Get("content-type")
-	if strings.Split(ct, ";")[0] != "application/json" {
-		e.logger.Info("Wrong content type", "code", "415", "Request.Content-Type", ct)
-		w.WriteHeader(http.StatusUnsupportedMediaType)
-		if _, err := w.Write([]byte("The content-type must be \"application/json\"")); err != nil {
-			e.logger.Error(err, "Failed to write response body")
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			if err := e.processNewEvents(); err != nil {
+				e.logger.Error(err, "Error processing new events")
+			}
 		}
-		return
 	}
+}
 
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		e.logger.Error(err, "Could not read request body", "code", "500")
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	event := JobEvent{}
-	err = json.Unmarshal(body, &event)
-	if err != nil {
-		e.logger.Info("Could not deserialize body.", "code", "400", "Error", err)
-		w.WriteHeader(http.StatusBadRequest)
-		if _, err := w.Write([]byte("Could not deserialize body as JSON")); err != nil {
-			e.logger.Error(err, "Failed to write response body")
-		}
-		return
-	}
-
-	// Guarantee that the Events channel will not be written to if stopped ==
-	// true, because in that case the channel has been closed.
+// processNewEvents scans for new event files and processes them
+func (e *EventReceiver) processNewEvents() error {
 	e.mutex.RLock()
-	defer e.mutex.RUnlock()
 	if e.stopped {
 		e.mutex.RUnlock()
-		w.WriteHeader(http.StatusGone)
-		e.logger.Info("Stopped and not accepting additional events for this job", "code", "410")
-		return
+		return nil
 	}
-	// ansible-runner sends "status events" and "ansible events". The "status
-	// events" signify a change in the state of ansible-runner itself, which
-	// we're not currently interested in.
-	// https://ansible-runner.readthedocs.io/en/latest/external_interface.html#event-structure
-	if event.UUID == "" {
-		e.logger.V(1).Info("Dropping event that is not a JobEvent")
-		e.logger.V(2).Info("Dropped event", "event", event, "request", string(body))
-	} else {
-		// timeout if the channel blocks for too long
+	e.mutex.RUnlock()
+
+	// Look for the job events directory
+	jobEventsDir := filepath.Join(e.ArtifactsPath, e.ident, "job_events")
+
+	// Check if the directory exists yet
+	if _, err := os.Stat(jobEventsDir); os.IsNotExist(err) {
+		return nil // Directory doesn't exist yet, which is normal at the start
+	}
+
+	// Read all event files
+	files, err := os.ReadDir(jobEventsDir)
+	if err != nil {
+		return fmt.Errorf("failed to read job events directory: %w", err)
+	}
+
+	// Process event files in order
+	for _, file := range files {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), ".json") {
+			// Extract event number from filename (e.g., "1-verbose.json" -> 1)
+			eventNum, err := e.extractEventNumber(file.Name())
+			if err != nil {
+				continue // Skip files that don't match expected pattern
+			}
+
+			// Only process events we haven't seen yet
+			if eventNum > e.lastEventNum {
+				if err := e.processEventFile(filepath.Join(jobEventsDir, file.Name())); err != nil {
+					e.logger.Error(err, "Failed to process event file", "file", file.Name())
+				} else {
+					e.lastEventNum = eventNum
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// extractEventNumber extracts the event sequence number from the filename
+func (e *EventReceiver) extractEventNumber(filename string) (int, error) {
+	// Event files are typically named like "1-verbose.json", "2-verbose.json", etc.
+	parts := strings.Split(filename, "-")
+	if len(parts) < 2 {
+		return -1, fmt.Errorf("invalid event file format: %s", filename)
+	}
+
+	eventNum, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return -1, fmt.Errorf("failed to parse event number from %s: %w", filename, err)
+	}
+
+	return eventNum, nil
+}
+
+// processEventFile reads and processes a single event file
+func (e *EventReceiver) processEventFile(filePath string) error {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to open event file %s: %w", filePath, err)
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return fmt.Errorf("failed to read event file %s: %w", filePath, err)
+	}
+
+	var event JobEvent
+	if err := json.Unmarshal(data, &event); err != nil {
+		return fmt.Errorf("failed to unmarshal event from %s: %w", filePath, err)
+	}
+
+	// Only process events that have a UUID (actual job events, not status events)
+	if event.UUID != "" {
+		// Send event to channel with timeout to avoid blocking
 		timeout := time.NewTimer(10 * time.Second)
 		select {
 		case e.Events <- event:
 		case <-timeout.C:
-			e.logger.Info("Timed out writing event to channel", "code", "500")
-			w.WriteHeader(http.StatusInternalServerError)
-			return
+			e.logger.Info("Timed out writing event to channel")
+			return fmt.Errorf("timeout writing event to channel")
 		}
-		_ = timeout.Stop()
+		timeout.Stop()
 	}
-	w.WriteHeader(http.StatusNoContent)
+
+	return nil
 }
