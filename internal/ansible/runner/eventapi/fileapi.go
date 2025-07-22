@@ -118,9 +118,9 @@ func (f *FileEventReceiver) watchJobEvents() {
 		return
 	}
 
-	// Ticker to periodically check for new files (in case we miss file events)
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
+	// // Ticker to periodically check for new files (in case we miss file events)
+	// ticker := time.NewTicker(1 * time.Second)
+	// defer ticker.Stop()
 
 	for {
 		select {
@@ -196,6 +196,7 @@ func (r *FileEventReceiver) processEventFile(filename string) bool {
 	r.processMutex.Lock()
 	if r.processedFiles[filename] {
 		r.processMutex.Unlock()
+		r.logger.Info("already processed file", "file", filename)
 		return true
 	}
 	r.processMutex.Unlock()
