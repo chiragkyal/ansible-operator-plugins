@@ -6,23 +6,23 @@ set -eux
 
 eval IMAGE=$IMAGE_FORMAT
 ROOTDIR="$(pwd)"
-GOTMP="$(mktemp -d -p $GOPATH/src)"
-trap_add 'rm -rf $GOTMP' EXIT
+# GOTMP="$(mktemp -d -p $GOPATH/src)"
+# trap_add 'rm -rf $GOTMP' EXIT
 
-mkdir -p $ROOTDIR/bin
-export PATH=$ROOTDIR/bin:$PATH
+# mkdir -p $ROOTDIR/bin
+# export PATH=$ROOTDIR/bin:$PATH
 
-# Install kubectl client
-if ! [ -x "$(command -v kubectl)" ]; then
-    curl -Lo kubectl https://storage.googleapis.com/kubernetes-release/release/v1.21.2/bin/linux/amd64/kubectl && chmod +x kubectl && mv kubectl bin/
-fi
+# # Install kubectl client
+# if ! [ -x "$(command -v kubectl)" ]; then
+#     curl -Lo kubectl https://storage.googleapis.com/kubernetes-release/release/v1.21.2/bin/linux/amd64/kubectl && chmod +x kubectl && mv kubectl bin/
+# fi
 
-# Install oc client
-if ! [ -x "$(command -v oc)" ]; then
-    OPENSHIFT_CLIENT_VERSION="4.16.0"
-    curl -Lo oc.tar.gz https://mirror.openshift.com/pub/openshift-v4/clients/ocp/${OPENSHIFT_CLIENT_VERSION}/openshift-client-linux-${OPENSHIFT_CLIENT_VERSION}.tar.gz
-    tar xvzOf oc.tar.gz oc > oc && chmod +x oc && mv oc bin/ && rm oc.tar.gz
-fi
+# # Install oc client
+# if ! [ -x "$(command -v oc)" ]; then
+#     OPENSHIFT_CLIENT_VERSION="4.16.0"
+#     curl -Lo oc.tar.gz https://mirror.openshift.com/pub/openshift-v4/clients/ocp/${OPENSHIFT_CLIENT_VERSION}/openshift-client-linux-${OPENSHIFT_CLIENT_VERSION}.tar.gz
+#     tar xvzOf oc.tar.gz oc > oc && chmod +x oc && mv oc bin/ && rm oc.tar.gz
+# fi
 
 # Printout where we're at and what we're using
 oc version
