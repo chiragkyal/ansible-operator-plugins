@@ -26,6 +26,8 @@ RUN python3 -m pip install pipenv==2023.11.15 \
   && pipenv install --deploy \
   && pipenv check \
   && pipenv run pip freeze --all  > ./requirements.in \
+  # Pin python-dateutil to 2.9.0 (pipenv resolves to 2.9.0.post0 which is not available in OSBS)
+  && sed -i 's/python-dateutil==2.9.0.post0/python-dateutil==2.9.0/' ./requirements.in \
   && pip-compile --output-file=./requirements.txt ./requirements.in --strip-extras --allow-unsafe \
   && pybuild-deps compile requirements.txt -o requirements-build.txt
 

@@ -25,7 +25,6 @@ flit-core==3.12.0
     #   pathspec
     #   pip
     #   ptyprocess
-    #   typing-extensions
     #   wheel
 hatch-vcs==0.5.0
     # via urllib3
@@ -55,8 +54,6 @@ semver==3.0.4
     # via changelog-chug
 setuptools-rust==1.12.0
     # via maturin
-setuptools-scm==7.1.0
-    # via python-dateutil
 setuptools-scm==8.1.0
     # via ansible-runner
 setuptools-scm==8.3.1
@@ -67,12 +64,11 @@ setuptools-scm==9.2.2
     # via
     #   charset-normalizer
     #   pluggy
+    #   python-dateutil
     #   requests-unixsocket
     #   setuptools-rust
 trove-classifiers==2025.12.1.14
     # via hatchling
-typing-extensions==4.15.0
-    # via setuptools-scm
 wheel==0.45.1
     # via
     #   ansible-core
